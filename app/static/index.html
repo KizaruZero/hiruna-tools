@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>media-tools — one for all</title>
+<style>
+  :root { --bg:#fafafa; --fg:#1a1a1a; --muted:#6b7280; --line:#e5e7eb;
+          --accent:#2563eb; --accent-soft:#eff6ff; --ok:#16a34a; --err:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+         background:var(--bg); color:var(--fg); }
+  .wrap { max-width:720px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { text-align:center; font-size:28px; letter-spacing:6px; margin:8px 0 4px; }
+  .sub { text-align:center; color:var(--muted); font-size:13px; margin-bottom:28px; }
+  .bar { display:flex; gap:8px; }
+  input[type=text] { flex:1; padding:12px 14px; font-size:15px; border:1px solid var(--line);
+                     border-radius:10px; background:#fff; }
+  button { padding:12px 20px; font-size:15px; border:0; border-radius:10px;
+           background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:#fff; color:var(--fg); border:1px solid var(--line); }
+  .tabs { display:flex; gap:8px; justify-content:center; margin:20px 0 8px; flex-wrap:wrap; }
+  .tab { padding:8px 18px; border:1px solid var(--line); border-radius:999px;
+         background:#fff; font-size:14px; color:var(--muted); }
+  .tab.active { background:var(--accent-soft); color:var(--accent); border-color:var(--accent); }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px;
+          padding:20px; margin-top:20px; }
+  .preview { display:flex; gap:16px; }
+  .preview img { width:160px; height:90px; object-fit:cover; border-radius:8px; background:#eee; }
+  .meta h3 { margin:0 0 6px; font-size:17px; }
+  .meta p { margin:2px 0; color:var(--muted); font-size:13px; }
+  table { width:100%; border-collapse:collapse; margin-top:14px; font-size:14px; }
+  th, td { text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; }
+  .dl-btn { padding:8px 14px; font-size:13px; }
+  .err { color:var(--err); background:#fef2f2; border:1px solid #fecaca;
+         border-radius:10px; padding:12px 14px; margin-top:16px; font-size:14px; }
+  .hint { color:var(--muted); font-size:13px; margin-top:16px; text-align:center; }
+  .prog { height:8px; background:var(--line); border-radius:99px; overflow:hidden; margin-top:10px; }
+  .prog > div { height:100%; background:var(--accent); width:0%; transition:width .3s; }
+  .jobline { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:12px; }
+  .small { font-size:12px; color:var(--muted); }
+  a.dl { display:inline-block; margin-top:10px; padding:10px 18px; background:var(--ok);
+         color:#fff; border-radius:10px; text-decoration:none; font-size:14px; }
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--line);
+             border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite;
+             vertical-align:-2px; margin-right:6px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MEDIA TOOLS</h1>
+  <div class="sub">one website for everyday media utilities — no ads, no popups, no premium walls</div>
+
+  <div class="bar">
+    <input id="url" type="text" placeholder="Paste a URL — youtube.com, youtu.be, tiktok.com, instagram.com…" autocomplete="off" spellcheck="false">
+    <button id="analyzeBtn" onclick="analyze()">Analyze</button>
+  </div>
+
+  <div class="tabs" id="tabs">
+    <span class="tab" data-p="youtube">YouTube</span>
+    <span class="tab" data-p="tiktok">TikTok</span>
+    <span class="tab" data-p="instagram">Instagram</span>
+    <span class="tab" data-p="utilities">Utilities</span>
+  </div>
+
+  <div id="out"></div>
+  <div class="hint">Public content only. Files are temporary and auto-deleted after a couple of hours.</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let current = null;
+
+$('url').addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
+
+function setTabs(provider) {
+  document.querySelectorAll('.tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.p === provider));
+}
+
+async function analyze() {
+  const url = $('url').value.trim();
+  const out = $('out');
+  out.innerHTML = '';
+  if (!url) { err('Please paste a URL first.'); return; }
+  const btn = $('analyzeBtn');
+  btn.disabled = true;
+  out.innerHTML = '<div class="card"><span class="spinner"></span>Analyzing…</div>';
+  try {
+    const r = await fetch('/api/analyze', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Analyze failed');
+    current = data;
+    setTabs(data.provider);
+    renderResult(data);
+  } catch (e) { err(e.message); }
+  finally { btn.disabled = false; }
+}
+
+function err(msg) {
+  $('out').innerHTML = `<div class="err">${escapeHtml(msg)}</div>`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtSize(b) {
+  if (b == null) return '—';
+  const u = ['B','KB','MB','GB']; let i = 0;
+  while (b >= 1024 && i < u.length-1) { b /= 1024; i++; }
+  return b.toFixed(i ? 1 : 0) + ' ' + u[i];
+}
+function fmtDur(s) {
+  if (s == null) return '—';
+  s = Math.round(s); const m = Math.floor(s/60);
+  return m + ':' + String(s%60).padStart(2,'0');
+}
+
+function renderResult(d) {
+  const m = d.metadata || {};
+  const caps = d.capabilities || {};
+  const rows = [...(d.formats||[]), ...(d.thumbnails||[])].map(f => `
+    <tr>
+      <td>${escapeHtml(f.label)}</td>
+      <td>${escapeHtml(f.ext)}</td>
+      <td>${fmtSize(f.filesize)}</td>
+      <td><button class="dl-btn" onclick="startDownload('${escapeHtml(f.format_id)}')">Download</button></td>
+    </tr>`).join('');
+  $('out').innerHTML = `
+  <div class="card">
+    <div class="preview">
+      ${m.thumbnail_url ? `<img src="${escapeHtml(m.thumbnail_url)}" alt="">` : ''}
+      <div class="meta">
+        <h3>${escapeHtml(m.title || d.resource.title || 'Untitled')}</h3>
+        <p>${escapeHtml(m.author || d.resource.author || '')}</p>
+        <p>Duration ${fmtDur(m.duration)} · via ${escapeHtml(d.provider)}</p>
+        ${m.webpage_url ? `<p><a href="${escapeHtml(m.webpage_url)}" target="_blank" rel="noopener">open original</a></p>` : ''}
+      </div>
+    </div>
+    ${rows ? `<table><tr><th>Format</th><th>Type</th><th>Size</th><th></th></tr>${rows}</table>`
+           : `<p class="small">No downloadable formats available for this link.</p>`}
+    <div id="job"></div>
+  </div>`;
+}
+
+async function startDownload(format_id) {
+  const box = $('job');
+  box.innerHTML = `<div class="jobline"><span><span class="spinner"></span>Preparing download…</span></div><div class="prog"><div id="pbar"></div></div>`;
+  try {
+    const r = await fetch('/api/download', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({url: $('url').value.trim(), format_id})
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Download failed to start');
+    pollJob(data.job_id);
+  } catch (e) {
+    box.innerHTML = `<div class="err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function pollJob(id) {
+  const box = $('job');
+  while (true) {
+    await new Promise(r => setTimeout(r, 1200));
+    let j;
+    try {
+      const r = await fetch('/api/jobs/' + id);
+      j = await r.json();
+      if (!r.ok) throw new Error(j.detail || 'Job lost');
+    } catch (e) { box.innerHTML = `<div class="err">${escapeHtml(e.message)}</div>`; return; }
+    const pct = Math.round((j.progress || 0) * 100);
+    const bar = $('pbar'); if (bar) bar.style.width = pct + '%';
+    if (j.status === 'done') {
+      box.innerHTML = `<div class="jobline"><span>Ready — <b>${escapeHtml(j.filename)}</b></span></div>
+        <a class="dl" href="/api/files/${id}">Download file</a>
+        <p class="small">Link expires automatically (temporary storage).</p>`;
+      return;
+    }
+    if (j.status === 'failed') {
+      box.innerHTML = `<div class="err">${escapeHtml(j.error || 'Download failed.')}</div>`;
+      return;
+    }
+  }
+}
+</script>
+</body>
+</html>
